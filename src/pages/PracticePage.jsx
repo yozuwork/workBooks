@@ -19,17 +19,38 @@ const localStore = (() => {
 const qid = (q) => 'm' + q.m + 'w' + q.w + 'd' + q.d
 
 function QuestionCard({ q, onDoneChange, syncKey }) {
-  const [showAns, setShowAns] = useState(false)
+  const selKey = 'sel_' + qid(q)
+  const [selected, setSelected] = useState(() => {
+    const v = localStore.get(selKey)
+    return v !== null ? parseInt(v, 10) : null
+  })
   const [done, setDone] = useState(localStore.get('done_' + qid(q)) === '1')
+  const [showAns, setShowAns] = useState(false)
   const id = qid(q)
   const tcls = q.t === '觀念題' ? 't1' : q.t === '程式題' ? 't2' : 't3'
+  const hasMcq = Array.isArray(q.opts) && q.opts.length === 4
 
-  // Re-sync state when Firestore data is loaded
   useEffect(() => {
-    const handler = () => setDone(localStore.get('done_' + id) === '1')
+    const handler = () => {
+      setDone(localStore.get('done_' + id) === '1')
+      const v = localStore.get(selKey)
+      setSelected(v !== null ? parseInt(v, 10) : null)
+    }
     window.addEventListener('progress-loaded', handler)
     return () => window.removeEventListener('progress-loaded', handler)
-  }, [id])
+  }, [id, selKey])
+
+  const handleSelect = (idx) => {
+    if (selected !== null) return // already answered
+    setSelected(idx)
+    syncKey(selKey, String(idx))
+    const correct = idx === q.ans
+    if (correct && !done) {
+      setDone(true)
+      syncKey('done_' + id, '1')
+      onDoneChange()
+    }
+  }
 
   const toggleDone = () => {
     const next = !done
@@ -37,6 +58,9 @@ function QuestionCard({ q, onDoneChange, syncKey }) {
     syncKey('done_' + id, next ? '1' : '0')
     onDoneChange()
   }
+
+  const answered = selected !== null
+  const correct = answered && selected === q.ans
 
   return (
     <div className={'q' + (done ? ' done' : '')} id={id}>
@@ -46,15 +70,54 @@ function QuestionCard({ q, onDoneChange, syncKey }) {
         <span className="day">{DAY_NAMES[q.d]}</span>
       </div>
       <h4 dangerouslySetInnerHTML={{ __html: q.q }} />
-      <div className="acts">
-        <button className="ghost" onClick={() => setShowAns(!showAns)}>
-          {showAns ? '隱藏答案' : '顯示答案'}
-        </button>
+
+      {hasMcq ? (
+        <div className="mcq-opts">
+          {q.opts.map((opt, idx) => {
+            let cls = 'mcq-opt'
+            if (answered) {
+              if (idx === q.ans) cls += ' opt-correct'
+              else if (idx === selected) cls += ' opt-wrong'
+              else cls += ' opt-dim'
+            }
+            return (
+              <button
+                key={idx}
+                className={cls}
+                onClick={() => handleSelect(idx)}
+                disabled={answered}
+              >
+                <span className="opt-label">{String.fromCharCode(65 + idx)}</span>
+                <span className="opt-text">{opt}</span>
+              </button>
+            )
+          })}
+          {answered && (
+            <div className={'mcq-result' + (correct ? ' ok' : ' fail')}>
+              {correct ? '✓ 答對了！' : `✗ 正確答案是 ${String.fromCharCode(65 + q.ans)}`}
+              <button className="ghost" style={{ marginLeft: 10, fontSize: 12 }} onClick={() => setShowAns(!showAns)}>
+                {showAns ? '收起解析' : '查看解析'}
+              </button>
+            </div>
+          )}
+          <div className={'ans' + (showAns ? ' show' : '')} dangerouslySetInnerHTML={{ __html: q.a }} />
+        </div>
+      ) : (
+        <>
+          <div className="acts">
+            <button className="ghost" onClick={() => setShowAns(!showAns)}>
+              {showAns ? '隱藏答案' : '顯示答案'}
+            </button>
+          </div>
+          <div className={'ans' + (showAns ? ' show' : '')} dangerouslySetInnerHTML={{ __html: q.a }} />
+        </>
+      )}
+
+      <div className="acts" style={{ marginTop: 8 }}>
         <button className={'ghost donebtn' + (done ? ' on' : '')} onClick={toggleDone}>
           {done ? '✓ 已完成' : '標記完成'}
         </button>
       </div>
-      <div className={'ans' + (showAns ? ' show' : '')} dangerouslySetInnerHTML={{ __html: q.a }} />
     </div>
   )
 }
