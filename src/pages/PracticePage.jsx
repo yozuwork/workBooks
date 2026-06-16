@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { DATA, MONTH_NAMES, DAY_NAMES } from '../data/questions'
+import { useProgressSync } from '../hooks/useProgressSync'
 
-const store = (() => {
+const localStore = (() => {
   try {
     localStorage.setItem('__t', '1')
     localStorage.removeItem('__t')
@@ -17,16 +18,23 @@ const store = (() => {
 
 const qid = (q) => 'm' + q.m + 'w' + q.w + 'd' + q.d
 
-function QuestionCard({ q, onDoneChange }) {
+function QuestionCard({ q, onDoneChange, syncKey }) {
   const [showAns, setShowAns] = useState(false)
-  const [done, setDone] = useState(store.get('done_' + qid(q)) === '1')
+  const [done, setDone] = useState(localStore.get('done_' + qid(q)) === '1')
   const id = qid(q)
   const tcls = q.t === '觀念題' ? 't1' : q.t === '程式題' ? 't2' : 't3'
+
+  // Re-sync state when Firestore data is loaded
+  useEffect(() => {
+    const handler = () => setDone(localStore.get('done_' + id) === '1')
+    window.addEventListener('progress-loaded', handler)
+    return () => window.removeEventListener('progress-loaded', handler)
+  }, [id])
 
   const toggleDone = () => {
     const next = !done
     setDone(next)
-    store.set('done_' + id, next ? '1' : '0')
+    syncKey('done_' + id, next ? '1' : '0')
     onDoneChange()
   }
 
@@ -52,12 +60,25 @@ function QuestionCard({ q, onDoneChange }) {
 }
 
 export default function PracticePage() {
-  const [curMonth, setCurMonth] = useState(() => parseInt(store.get('dive_month') || '1', 10))
+  const { syncKey } = useProgressSync('dive-plan')
+
+  const [curMonth, setCurMonth] = useState(() => parseInt(localStore.get('dive_month') || '1', 10))
   const [curType, setCurType] = useState('all')
-  const [startDate, setStartDate] = useState(() => store.get('dive_start') || '')
+  const [startDate, setStartDate] = useState(() => localStore.get('dive_start') || '')
   const [todayInfo, setTodayInfo] = useState({ text: '設定你的計畫開始日，這裡就會自動指到今天該做的題目。', target: null })
   const [, forceUpdate] = useState(0)
   const bubbleRef = useRef(null)
+
+  // Re-render when Firestore data loads
+  useEffect(() => {
+    const handler = () => {
+      setCurMonth(parseInt(localStore.get('dive_month') || '1', 10))
+      setStartDate(localStore.get('dive_start') || '')
+      forceUpdate(n => n + 1)
+    }
+    window.addEventListener('progress-loaded', handler)
+    return () => window.removeEventListener('progress-loaded', handler)
+  }, [])
 
   useEffect(() => {
     const wrap = bubbleRef.current
@@ -110,7 +131,7 @@ export default function PracticePage() {
   const scrollToQ = (target, m) => {
     setCurMonth(m)
     setCurType('all')
-    store.set('dive_month', String(m))
+    syncKey('dive_month', String(m))
     setTimeout(() => {
       const el = document.getElementById(qid(target))
       if (el) {
@@ -127,7 +148,7 @@ export default function PracticePage() {
   }
 
   const randomPick = () => {
-    const pool = DATA.filter(q => store.get('done_' + qid(q)) !== '1')
+    const pool = DATA.filter(q => localStore.get('done_' + qid(q)) !== '1')
     const arr = pool.length ? pool : DATA
     const pick = arr[Math.floor(Math.random() * arr.length)]
     scrollToQ(pick, pick.m)
@@ -135,20 +156,20 @@ export default function PracticePage() {
 
   const handleMonthChange = (m) => {
     setCurMonth(m)
-    store.set('dive_month', String(m))
+    syncKey('dive_month', String(m))
   }
 
   const handleDateChange = (v) => {
     setStartDate(v)
-    store.set('dive_start', v)
+    syncKey('dive_start', v)
   }
 
   const monthItems = DATA.filter(q => q.m === curMonth)
   let filtered = monthItems
-  if (curType === 'undone') filtered = monthItems.filter(q => store.get('done_' + qid(q)) !== '1')
+  if (curType === 'undone') filtered = monthItems.filter(q => localStore.get('done_' + qid(q)) !== '1')
   else if (curType !== 'all') filtered = monthItems.filter(q => q.t === curType)
 
-  const doneCount = monthItems.filter(q => store.get('done_' + qid(q)) === '1').length
+  const doneCount = monthItems.filter(q => localStore.get('done_' + qid(q)) === '1').length
   const progPct = monthItems.length ? (doneCount / monthItems.length) * 100 : 0
 
   const weeks = []
@@ -222,7 +243,7 @@ export default function PracticePage() {
               <div key={w}>
                 <div className="wk-head">WEEK {w}</div>
                 {items.map(q => (
-                  <QuestionCard key={qid(q)} q={q} onDoneChange={() => forceUpdate(n => n + 1)} />
+                  <QuestionCard key={qid(q)} q={q} syncKey={syncKey} onDoneChange={() => forceUpdate(n => n + 1)} />
                 ))}
               </div>
             ))
