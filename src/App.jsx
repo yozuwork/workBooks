@@ -2,7 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import useAuth from './hooks/useAuth'
 import AdminLayout from './components/AdminLayout'
 import OverviewPage from './pages/OverviewPage'
-import StatsPage from './pages/StatsPage'
+import DivePlanPage from './pages/DivePlanPage'
 import NotFoundPage from './pages/NotFoundPage'
 
 function LoginPage({ signIn, authError }) {
@@ -56,10 +56,10 @@ export default function App() {
   return (
     <Routes>
       <Route element={<AdminLayout user={user} signIn={signIn} logOut={logOut} />}>
-        <Route path="/overview" element={<OverviewPage />} />
-        <Route path="/stats" element={<StatsPage />} />
+        <Route path="/frontend-practice" element={<OverviewPage />} />
+        <Route path="/frontend-practice/dive-plan" element={<DivePlanPage />} />
       </Route>
-      <Route path="*" element={<Navigate to="/overview" replace />} />
+      <Route path="*" element={<Navigate to="/frontend-practice" replace />} />
     </Routes>
   )
 }
